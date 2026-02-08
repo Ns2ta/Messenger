@@ -1,0 +1,126 @@
+package client;
+
+import net.Protocol;
+
+import java.io.*;
+import java.net.Socket;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
+
+public class ClientConnection implements Closeable {
+    private final Socket socket;
+    private final BufferedReader in;
+    private final PrintWriter out;
+
+    private final BlockingQueue<String> responses = new LinkedBlockingQueue<>();
+    private final Thread readerThread;
+
+    public ClientConnection(String host, int port) throws IOException {
+        this.socket = new Socket(host, port);
+        this.in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+        this.out = new PrintWriter(new OutputStreamWriter(socket.getOutputStream()), true);
+
+        // стартуем reader
+        this.readerThread = new Thread(this::readerLoop, "server-reader");
+        this.readerThread.setDaemon(true);
+        this.readerThread.start();
+    }
+
+    private void readerLoop() {
+        try {
+            String line;
+            while ((line = in.readLine()) != null) {
+                if (line.startsWith(Protocol.EVENT)) {
+                    System.out.println();
+                    renderEvent(line);      // <-- добавили
+                    System.out.print(">> ");
+                } else {
+                    responses.offer(line);
+                }
+            }
+        } catch (IOException ignored) {
+        }
+    }
+
+    private void renderEvent(String line) {
+        // EVENT NEW_TEXT chatId=3 senderId=1 text=Hello...
+        if (line.startsWith("EVENT NEW_TEXT")) {
+            String chatId = getField(line, "chatId");
+            String senderId = getField(line, "senderId");
+            String text = getAfter(line, "text=");
+            System.out.println("💬 NEW TEXT (chat " + chatId + ", from " + senderId + ")");
+            System.out.println("    " + highlightHttps(unescape(text)));
+            return;
+        }
+
+        // EVENT NEW_VOICE chatId=3 senderId=2 title=... url=...
+        if (line.startsWith("EVENT NEW_VOICE")) {
+            String chatId = getField(line, "chatId");
+            String senderId = getField(line, "senderId");
+            String title = getAfter(line, "title=");
+            // title=... url=...  -> title у нас может “съесть” url, поэтому отделяем:
+            String url = getAfter(line, "url=");
+
+            // нормализация если title содержит " url="
+            int cut = title.indexOf(" url=");
+            if (cut >= 0) title = title.substring(0, cut);
+
+            System.out.println("🎙 NEW VOICE (chat " + chatId + ", from " + senderId + ")");
+            System.out.println("    Title: " + unescape(title));
+            System.out.println("    Link : " + unescape(url));
+            return;
+        }
+
+        // fallback
+        System.out.println(line);
+    }
+
+    private String getField(String line, String key) {
+        // finds key=value where value ends at space
+        int idx = line.indexOf(key + "=");
+        if (idx < 0) return "";
+        idx += (key.length() + 1);
+        int end = line.indexOf(' ', idx);
+        if (end < 0) end = line.length();
+        return line.substring(idx, end);
+    }
+
+    private String getAfter(String line, String marker) {
+        int idx = line.indexOf(marker);
+        if (idx < 0) return "";
+        return line.substring(idx + marker.length()).trim();
+    }
+
+    private String unescape(String s) {
+        return s.replace("\\n", "\n").replace("\\r", "\r");
+    }
+
+    private String highlightHttps(String s) {
+        // лёгкая “подсветка” ссылок
+        return s.replace("https://", "🔗 https://");
+    }
+
+    /** Отправить команду на сервер */
+    public void send(String line) {
+        out.println(line);
+    }
+
+    /** Взять одну строку ответа (блокирующе) */
+    public String takeLine() throws InterruptedException {
+        return responses.take();
+    }
+
+    /** Выполнить запрос и получить первую строку ответа */
+    public String requestOneLine(String cmd) throws InterruptedException {
+        send(cmd);
+        return takeLine();
+    }
+
+    @Override
+    public void close() throws IOException {
+        try {
+            out.println(Protocol.EXIT);
+        } catch (Exception ignored) {}
+        try { socket.close(); } catch (Exception ignored) {}
+    }
+}
