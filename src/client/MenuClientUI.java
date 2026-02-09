@@ -18,7 +18,6 @@ public class MenuClientUI {
     }
 
     public void run() throws Exception {
-        // сервер может прислать "OK Connected..."
         System.out.println(conn.takeLine());
 
         while (true) {
@@ -29,8 +28,6 @@ public class MenuClientUI {
             }
         }
     }
-
-    // ---------------- AUTH ----------------
 
     private boolean authMenu() throws Exception {
         System.out.println("\n=== Messenger ===");
@@ -46,7 +43,6 @@ public class MenuClientUI {
                 String id = sc.nextLine().trim();
                 String resp = conn.requestOneLine(Protocol.LOGIN + " " + id);
                 if (resp.startsWith(Protocol.OK)) {
-                    // OK LOGGED_IN userId=1 username=alice
                     myUserId = parseLongField(resp, "userId");
                     myUsername = parseStringField(resp, "username");
                     System.out.println("Вы вошли как " + myUsername + " (id=" + myUserId + ")");
@@ -64,7 +60,6 @@ public class MenuClientUI {
                 }
                 String resp = conn.requestOneLine(Protocol.REGISTER + " " + name);
                 if (resp.startsWith(Protocol.OK)) {
-                    // OK REGISTERED userId=1 username=alice
                     myUserId = parseLongField(resp, "userId");
                     myUsername = parseStringField(resp, "username");
                     System.out.println("Зарегистрированы и вошли как " + myUsername + " (id=" + myUserId + ")");
@@ -85,8 +80,6 @@ public class MenuClientUI {
         }
     }
 
-    // ---------------- MAIN MENU ----------------
-
     private boolean mainMenu() throws Exception {
         System.out.println("\nВы: " + myUsername + " (id=" + myUserId + ")");
         System.out.println("1) Показать пользователей");
@@ -104,15 +97,13 @@ public class MenuClientUI {
             case "2" -> createChatWizard();
             case "3" -> showChats();
             case "4" -> openChatWizard();
-            case "5" -> renameMe(); // (если добавишь команду на сервер — иначе можно убрать)
+            case "5" -> renameMe();
             case "9" -> { myUserId = null; myUsername = null; }
             case "0" -> { conn.send(Protocol.EXIT); return false; }
             default -> System.out.println("Неверный выбор.");
         }
         return true;
     }
-
-    // ---------------- USERS ----------------
 
     private static class UserRow {
         long id;
@@ -122,7 +113,7 @@ public class MenuClientUI {
 
     private List<UserRow> fetchUsers() throws Exception {
         conn.send(Protocol.USERS);
-        String first = conn.takeLine(); // OK USERS count=...
+        String first = conn.takeLine();
         if (!first.startsWith(Protocol.OK)) {
             System.out.println(first);
             return List.of();
@@ -131,7 +122,7 @@ public class MenuClientUI {
         int count = (int) parseLongField(first, "count");
         List<UserRow> rows = new ArrayList<>();
         for (int i = 0; i < count; i++) {
-            String line = conn.takeLine().trim(); // "id=..|name=..|online=.."
+            String line = conn.takeLine().trim();
             UserRow r = new UserRow();
             r.id = parseLongBetween(line, "id=", "|");
             r.name = parseStringBetween(line, "name=", "|");
@@ -155,8 +146,6 @@ public class MenuClientUI {
         }
     }
 
-    // ---------------- CHATS ----------------
-
     private static class ChatRow {
         long chatId;
         String title;
@@ -165,7 +154,7 @@ public class MenuClientUI {
 
     private List<ChatRow> fetchMyChats() throws Exception {
         conn.send(Protocol.CHATS);
-        String first = conn.takeLine(); // OK CHATS count=...
+        String first = conn.takeLine();
         if (!first.startsWith(Protocol.OK)) {
             System.out.println(first);
             return List.of();
@@ -174,7 +163,7 @@ public class MenuClientUI {
         int count = (int) parseLongField(first, "count");
         List<ChatRow> rows = new ArrayList<>();
         for (int i = 0; i < count; i++) {
-            String line = conn.takeLine().trim(); // chatId=..|title=..|participants=[...]
+            String line = conn.takeLine().trim();
             ChatRow r = new ChatRow();
             r.chatId = parseLongBetween(line, "chatId=", "|");
             r.title = parseStringBetween(line, "title=", "|");
@@ -198,8 +187,6 @@ public class MenuClientUI {
         }
     }
 
-    // ---------------- WIZARDS ----------------
-
     private void createChatWizard() throws Exception {
         System.out.print("Название чата: ");
         String title = sc.nextLine().trim();
@@ -209,7 +196,6 @@ public class MenuClientUI {
         }
 
         List<UserRow> users = fetchUsers();
-        // показываем только других пользователей
         List<UserRow> others = new ArrayList<>();
         for (UserRow u : users) {
             if (myUserId != null && u.id != myUserId) others.add(u);
@@ -247,7 +233,6 @@ public class MenuClientUI {
         String idsCsv = selectedIds.stream().map(String::valueOf).reduce((a,b)->a+","+b).orElse("");
         String resp = conn.requestOneLine(Protocol.CREATE_CHAT + " " + title + " | " + idsCsv);
         System.out.println(resp);
-        // чатId пользователь может не видеть, но мы дальше можем открыть чат через "Открыть чат"
     }
 
     private void openChatWizard() throws Exception {
@@ -297,7 +282,7 @@ public class MenuClientUI {
 
     private void showHistory(long chatId) throws Exception {
         conn.send(Protocol.HISTORY + " " + chatId);
-        String first = conn.takeLine(); // OK HISTORY chatId=.. count=..
+        String first = conn.takeLine();
         if (!first.startsWith(Protocol.OK)) {
             System.out.println(first);
             return;
@@ -309,7 +294,7 @@ public class MenuClientUI {
         }
         for (int i = 0; i < count; i++) {
             String line = conn.takeLine();
-            renderHistoryLine(line);      // <-- новое
+            renderHistoryLine(line);
         }
     }
 
@@ -321,8 +306,8 @@ public class MenuClientUI {
 
         String kind = getBetween(line, "kind=", "|");
         String ts = getBetween(line, "ts=", "|");
-        String sender = getBetween(line, "sender=", "|"); // сервер сейчас шлёт sender=
-        String status = getBetween(line, "status=", "|"); // может быть пустым
+        String sender = getBetween(line, "sender=", "|");
+        String status = getBetween(line, "status=", "|");
 
         switch (kind) {
             case "VOICE" -> {
@@ -390,7 +375,6 @@ public class MenuClientUI {
 
         String resp = conn.requestOneLine(Protocol.SEND_TEXT + " " + chatId + " " + text);
         System.out.println(resp);
-        // EVENT прилетит отдельной строкой автоматически (reader thread)
     }
     private void sendText(long chatId) throws Exception {
         System.out.println("Введите текст (пусто = отмена):");
@@ -398,7 +382,6 @@ public class MenuClientUI {
         String text = sc.nextLine();
         if (text == null || text.trim().isEmpty()) return;
 
-        // обычный текст может содержать любые https ссылки
         String resp = conn.requestOneLine("SEND_TEXT " + chatId + " " + text);
         System.out.println(resp);
     }
@@ -417,7 +400,6 @@ public class MenuClientUI {
             return;
         }
 
-        // Команда на сервер (title | url)
         String resp = conn.requestOneLine("SEND_VOICE_LINK " + chatId + " " + title + " | " + url);
         System.out.println(resp);
     }
@@ -448,13 +430,9 @@ public class MenuClientUI {
         System.out.println(resp);
     }
 
-    // ---------------- Optional: rename ----------------
-    // Если у тебя нет команды RENAME_USER на сервере — убери пункт "5" из меню.
     private void renameMe() {
         System.out.println("Переименование сейчас не подключено (нужно добавить команду на сервер).");
     }
-
-    // ---------------- Parsing helpers ----------------
 
     private static long parseLongField(String line, String field) {
         Pattern p = Pattern.compile(field + "=(\\d+)");
@@ -495,7 +473,6 @@ public class MenuClientUI {
     }
 
     private static List<Long> parseParticipants(String s) {
-        // s like: [1, 2, 3]
         s = s.trim();
         if (!s.startsWith("[") || !s.endsWith("]")) return List.of();
         s = s.substring(1, s.length() - 1).trim();

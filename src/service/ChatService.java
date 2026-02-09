@@ -26,11 +26,9 @@ public class ChatService {
         this.userLookup = userLookup;
     }
 
-    // CRUD: Create
     public Chat createChat(String title, List<Long> participantIds) {
         Chat chat = new Chat(IdGenerator.nextId(), title);
         for (long uid : participantIds) {
-            // проверим, что пользователь существует
             User u = userLookup.getUser(uid);
             chat.addParticipant(u.getId());
         }
@@ -38,7 +36,6 @@ public class ChatService {
         return chat;
     }
 
-    // CRUD: Read
     public Chat getChat(long chatId) {
         return chats.findById(chatId).orElseThrow(() -> new ChatNotFoundException(chatId));
     }
@@ -47,29 +44,25 @@ public class ChatService {
         return chats.findAll();
     }
 
-    // CRUD: Update
     public void renameChat(long chatId, String newTitle) {
         Chat chat = getChat(chatId);
         chat.setTitle(newTitle);
         chats.update(chat);
     }
 
-    // CRUD: Delete
     public void deleteChat(long chatId) {
         chats.deleteById(chatId);
     }
 
-    // Observer wiring
     public void subscribeToChat(long chatId, ChatEventListener listener) {
         Chat chat = getChat(chatId);
         chat.subscribe(listener);
         chats.update(chat);
     }
 
-    // Messaging operations
     public Message sendText(long chatId, long senderId, String text) {
         Chat chat = getChat(chatId);
-        userLookup.getUser(senderId); // validate
+        userLookup.getUser(senderId);
 
         Message msg = new TextMessage(IdGenerator.nextId(), chatId, senderId, TimeProvider.now(), text);
         chat.addMessage(msg);
@@ -79,7 +72,7 @@ public class ChatService {
 
     public Message sendImage(long chatId, long senderId, String pathOrName) {
         Chat chat = getChat(chatId);
-        userLookup.getUser(senderId); // validate
+        userLookup.getUser(senderId);
 
         Message msg = new ImageMessage(IdGenerator.nextId(), chatId, senderId, TimeProvider.now(), pathOrName);
         chat.addMessage(msg);
@@ -156,7 +149,6 @@ public class ChatService {
         if (url == null) return false;
         String u = url.trim();
         if (!u.startsWith("https://")) return false;
-        // Google Drive share links commonly use these hosts
         return u.contains("://drive.google.com/") || u.contains("://docs.google.com/");
     }
 
@@ -170,5 +162,40 @@ public class ChatService {
             m.setStatus(Message.Status.DELIVERED);
         }
         chats.update(chat);
+    }
+
+    public void markDelivered(long chatId, long receiverId, long messageId) {
+        Chat chat = getChat(chatId);
+        if (!chat.getParticipantIds().contains(receiverId)) {
+            throw new IllegalArgumentException("Receiver is not a chat participant");
+        }
+
+        for (Message m : chat.getMessages()) {
+            if (m.getId() == messageId) {
+                if (m.getSenderId() == receiverId) return;
+                if (m.getStatus() == Message.Status.SENT) {
+                    m.setStatus(Message.Status.DELIVERED);
+                    chats.update(chat);
+                }
+                return;
+            }
+        }
+        throw new IllegalArgumentException("Message not found: " + messageId);
+    }
+
+    public void markChatRead(long chatId, long readerId) {
+        Chat chat = getChat(chatId);
+        if (!chat.getParticipantIds().contains(readerId)) {
+            throw new IllegalArgumentException("Reader is not a chat participant");
+        }
+
+        boolean changed = false;
+        for (Message m : chat.getMessages()) {
+            if (m.getSenderId() != readerId && m.getStatus() != Message.Status.READ) {
+                m.setStatus(Message.Status.READ);
+                changed = true;
+            }
+        }
+        if (changed) chats.update(chat);
     }
 }

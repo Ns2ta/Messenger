@@ -6,12 +6,6 @@ import java.io.*;
 import java.net.Socket;
 import java.util.Scanner;
 
-/**
- * Console client:
- * - one instance per terminal (one user session)
- * - reader thread prints server messages (including EVENT NEW_MESSAGE)
- * - main thread reads your commands and sends to server
- */
 public class ChatClient {
     private final String host;
     private final int port;
@@ -27,12 +21,10 @@ public class ChatClient {
              PrintWriter out = new PrintWriter(new OutputStreamWriter(socket.getOutputStream()), true);
              Scanner sc = new Scanner(System.in)) {
 
-            // reader thread: prints server lines asynchronously (push notifications)
             Thread reader = new Thread(() -> {
                 try {
                     String line;
                     while ((line = in.readLine()) != null) {
-                        // Make events visually distinct
                         if (line.startsWith(Protocol.EVENT)) {
                             System.out.println("\n" + line);
                             System.out.print("> ");
@@ -47,7 +39,6 @@ public class ChatClient {
             reader.setDaemon(true);
             reader.start();
 
-            // writer loop
             System.out.print("> ");
             while (true) {
                 String line = sc.nextLine();
@@ -60,7 +51,6 @@ public class ChatClient {
 
                 out.println(line);
 
-                // local exit convenience
                 if (line.equalsIgnoreCase(Protocol.EXIT)) {
                     break;
                 }

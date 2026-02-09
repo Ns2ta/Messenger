@@ -15,7 +15,7 @@ public class ConsoleApp {
     private final ChatService chatService;
     private final Scanner scanner;
 
-    private User currentUser; // "я" в системе
+    private User currentUser;
 
     public ConsoleApp(UserService userService, ChatService chatService, Scanner scanner) {
         this.userService = userService;
@@ -56,12 +56,16 @@ public class ConsoleApp {
                     case "send_image" -> cmdSendImage(args);
 
                     case "rename_chat" -> cmdRenameChat(args);
+                    case "delete_chat" -> cmdDeleteChat(args);
+
                     case "rename_user" -> cmdRenameUser(args);
+
+                    case "ack_delivered" -> cmdAckDelivered(args);
+                    case "mark_read" -> cmdMarkRead(args);
 
                     default -> System.out.println("Unknown command. Type: help");
                 }
             } catch (Exception ex) {
-                // На защите это нормально: показываешь, что ты используешь exceptions, а не System.exit() :contentReference[oaicite:1]{index=1}
                 System.out.println("[ERROR] " + ex.getMessage());
             }
         }
@@ -77,8 +81,6 @@ public class ConsoleApp {
             throw new IllegalStateException("You must login first. Use: register <name> OR login <userId>");
         }
     }
-
-    // ---------------- Commands ----------------
 
     private void cmdRegister(String args) {
         if (args.isBlank()) {
@@ -119,27 +121,27 @@ public class ConsoleApp {
 
     private void cmdAddContact(String args) {
         requireLogin();
-        // add_contact <targetUserId> <alias...>
-        String[] p = args.split("\\s+", 2);
-        if (p.length < 2) {
+        if (args.isBlank()) {
             System.out.println("Usage: add_contact <targetUserId> <alias>");
             return;
         }
+        String[] p = args.trim().split("\s+", 2);
         long targetId = Long.parseLong(p[0]);
-        String alias = p[1].trim();
+        String alias = (p.length >= 2) ? p[1].trim() : "";
+        if (alias.isBlank()) {
+            alias = userService.getUser(targetId).getUsername();
+        }
         userService.addContact(currentUser.getId(), targetId, alias);
-        System.out.println("Contact added: targetId=" + targetId + ", alias=" + alias);
+        System.out.println("Added contact: userId=" + targetId + " alias=\"" + alias + "\"" );
     }
 
     private void cmdCreateChat(String args) {
         requireLogin();
-        // create_chat <title> ; participants = currentUser only for now (можно расширить)
         if (args.isBlank()) {
             System.out.println("Usage: create_chat <title>");
             return;
         }
         Chat chat = chatService.createChat(args.trim(), List.of(currentUser.getId()));
-        // подписываем текущего юзера на уведомления чата (Observer demo)
         chatService.subscribeToChat(chat.getId(), new ConsoleNotificationListener());
 
         System.out.println("Chat created: id=" + chat.getId() + " | title=" + chat.getTitle()
@@ -176,7 +178,6 @@ public class ConsoleApp {
 
     private void cmdSendText(String args) {
         requireLogin();
-        // send_text <chatId> <text...>
         String[] p = args.split("\\s+", 2);
         if (p.length < 2) {
             System.out.println("Usage: send_text <chatId> <text>");
@@ -190,7 +191,6 @@ public class ConsoleApp {
 
     private void cmdSendImage(String args) {
         requireLogin();
-        // send_image <chatId> <filenameOrPath...>
         String[] p = args.split("\\s+", 2);
         if (p.length < 2) {
             System.out.println("Usage: send_image <chatId> <filenameOrPath>");
@@ -204,7 +204,6 @@ public class ConsoleApp {
 
     private void cmdRenameChat(String args) {
         requireLogin();
-        // rename_chat <chatId> <newTitle...>
         String[] p = args.split("\\s+", 2);
         if (p.length < 2) {
             System.out.println("Usage: rename_chat <chatId> <newTitle>");
@@ -223,7 +222,7 @@ public class ConsoleApp {
             return;
         }
         userService.renameUser(currentUser.getId(), args.trim());
-        currentUser = userService.getUser(currentUser.getId()); // обновим ссылку
+        currentUser = userService.getUser(currentUser.getId());
         System.out.println("User renamed. Now: " + currentUser.getUsername());
     }
 
@@ -245,20 +244,105 @@ Auth:
 
 Users/Contacts:
   users
+  rename_user <newName>
+  delete_user <userId>
   add_contact <targetUserId> <alias>
+  contacts
+  remove_contact <targetUserId>
 
 Chats:
   create_chat <title>
   chats
   rename_chat <chatId> <newTitle>
+  delete_chat <chatId>
 
 Messaging:
   send_text <chatId> <text>
   send_image <chatId> <filenameOrPath>
   history <chatId>
 
-Profile:
-  rename_user <newName>
+Message status demo:
+  ack_delivered <chatId> <messageId>
+  mark_read <chatId>
 """);
+    }
+
+
+    private void cmdContacts() {
+        requireLogin();
+        var contacts = userService.listContacts(currentUser.getId());
+        if (contacts.isEmpty()) {
+            System.out.println("(no contacts)");
+            return;
+        }
+        contacts.forEach(c -> System.out.println(
+                "target=" + c.getTargetUser().getUsername() + "#" + c.getTargetUser().getId()
+                        + " | alias=" + c.getAlias()
+        ));
+    }
+
+
+    private void cmdRemoveContact(String args) {
+        requireLogin();
+        if (args.isBlank()) {
+            System.out.println("Usage: remove_contact <targetUserId>");
+            return;
+        }
+        long targetId = Long.parseLong(args.trim());
+        userService.removeContact(currentUser.getId(), targetId);
+        System.out.println("Removed contact: userId=" + targetId);
+    }
+
+
+    private void cmdDeleteUser(String args) {
+        requireLogin();
+        if (args.isBlank()) {
+            System.out.println("Usage: delete_user <userId>");
+            return;
+        }
+        long userId = Long.parseLong(args.trim());
+        userService.deleteUser(userId);
+        if (currentUser != null && currentUser.getId() == userId) {
+            currentUser = null;
+        }
+        System.out.println("Deleted user id=" + userId);
+    }
+
+
+    private void cmdDeleteChat(String args) {
+        requireLogin();
+        if (args.isBlank()) {
+            System.out.println("Usage: delete_chat <chatId>");
+            return;
+        }
+        long chatId = Long.parseLong(args.trim());
+        chatService.deleteChat(chatId);
+        System.out.println("Deleted chat id=" + chatId);
+    }
+
+
+    private void cmdAckDelivered(String args) {
+        requireLogin();
+        String[] p = args.trim().split("\\s+");
+        if (p.length < 2) {
+            System.out.println("Usage: ack_delivered <chatId> <messageId>");
+            return;
+        }
+        long chatId = Long.parseLong(p[0]);
+        long messageId = Long.parseLong(p[1]);
+        chatService.markDelivered(chatId, currentUser.getId(), messageId);
+        System.out.println("Marked DELIVERED: chatId=" + chatId + " messageId=" + messageId);
+    }
+
+
+    private void cmdMarkRead(String args) {
+        requireLogin();
+        if (args.isBlank()) {
+            System.out.println("Usage: mark_read <chatId>");
+            return;
+        }
+        long chatId = Long.parseLong(args.trim());
+        chatService.markChatRead(chatId, currentUser.getId());
+        System.out.println("Marked READ for chatId=" + chatId);
     }
 }

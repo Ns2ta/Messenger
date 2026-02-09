@@ -19,25 +19,17 @@ import java.util.HashSet;
 import java.util.Set;
 import domain.Chat;
 
-/**
- * Single JVM server:
- * - keeps all repositories/services in memory (per project requirements) :contentReference[oaicite:1]{index=1}
- * - accepts multiple clients (each in own console)
- * - broadcasts new messages to online participants (push events)
- */
 public class ChatServer implements ChatEventListener {
     private final int port;
 
     private final UserService userService;
     private final ChatService chatService;
 
-    // online sessions: userId -> handler
     private final Map<Long, ClientHandler> online = new ConcurrentHashMap<>();
 
     public ChatServer(int port) {
         this.port = port;
 
-        // In-memory storage lives here (SERVER process)
         this.userService = new UserService(new InMemoryUserRepository());
         this.chatService = new ChatService(new InMemoryChatRepository(), userService);
     }
@@ -56,7 +48,6 @@ public class ChatServer implements ChatEventListener {
         }
     }
 
-    // Called by ClientHandler after successful login
     public void registerOnline(long userId, ClientHandler handler) {
         online.put(userId, handler);
     }
@@ -69,14 +60,13 @@ public class ChatServer implements ChatEventListener {
         return online.containsKey(userId);
     }
 
-    // Subscribe server to chat events so it can broadcast NEW_MESSAGE
     private final Set<Long> subscribedChats = new HashSet<>();
 
     public void ensureChatSubscribed(long chatId) {
         if (subscribedChats.contains(chatId)) return;
 
         Chat chat = chatService.getChat(chatId);
-        chat.subscribe(this); // Observer: сервер подписывается на чат
+        chat.subscribe(this);
         subscribedChats.add(chatId);
     }
     public void ensureSubscribedForUser(long userId) {
@@ -87,14 +77,8 @@ public class ChatServer implements ChatEventListener {
         }
     }
 
-    // Observer event: chat got a new message -> broadcast to online participants
     @Override
     public void onNewMessage(Chat chat, Message message) {
-        // IMPORTANT:
-        // Push notifications MUST start with "EVENT".
-        // Otherwise the client will treat them as normal command responses,
-        // they will land in the responses queue and will break parsing
-        // (exactly the crash you saw in HISTORY).
 
         long chatId = chat.getId();
         String chatTitle = safe(chat.getTitle());

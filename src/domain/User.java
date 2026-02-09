@@ -19,6 +19,7 @@ public class User {
     public long getId() { return id; }
     public String getUsername() { return username; }
     public boolean isOnline() { return online; }
+
     public List<Contact> getContacts() {
         return Collections.unmodifiableList(contacts);
     }
@@ -26,7 +27,18 @@ public class User {
     public void setUsername(String username) { this.username = username; }
     public void setOnline(boolean online) { this.online = online; }
 
-    public void addContact(Contact contact) {
-        this.contacts.add(contact);
+    public void addOrUpdateContact(Contact contact) {
+        for (Contact c : contacts) {
+            if (c.getTargetUser().getId() == contact.getTargetUser().getId()) {
+                c.setAlias(contact.getAlias());
+                c.setTargetUser(contact.getTargetUser());
+                return;
+            }
+        }
+        contacts.add(contact);
+    }
+
+    public void removeContactByTargetId(long targetUserId) {
+        contacts.removeIf(c -> c.getTargetUser().getId() == targetUserId);
     }
 }

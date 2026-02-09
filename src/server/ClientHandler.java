@@ -17,10 +17,6 @@ import java.io.*;
 import java.net.Socket;
 import java.util.*;
 
-/**
- * One handler per client connection.
- * Reads commands and executes via services.
- */
 public class ClientHandler implements Runnable {
     private final Socket socket;
     private final ChatServer server;
@@ -80,7 +76,6 @@ public class ClientHandler implements Runnable {
                 }
             }
         } catch (IOException ignored) {
-            // client disconnected abruptly
         } finally {
             if (currentUserId != null) {
                 server.unregisterOnline(currentUserId);
@@ -91,8 +86,6 @@ public class ClientHandler implements Runnable {
     public void sendLine(String line) {
         if (out != null) out.println(line);
     }
-
-    // ---------------- handlers ----------------
 
     private void handleHelp() {
         sendLine(Protocol.OK + " Commands:");
@@ -116,10 +109,9 @@ public class ClientHandler implements Runnable {
             return;
         }
         User u = userService.createUser(args.trim());
-        // auto login
         currentUserId = u.getId();
         server.registerOnline(currentUserId, this);
-        server.ensureSubscribedForUser(currentUserId); // <-- ВОТ ЭТО ДОБАВИТЬ
+        server.ensureSubscribedForUser(currentUserId);
 
         sendLine(Protocol.OK + " REGISTERED userId=" + u.getId() + " username=" + u.getUsername());
 
@@ -135,7 +127,7 @@ public class ClientHandler implements Runnable {
 
         currentUserId = u.getId();
         server.registerOnline(currentUserId, this);
-        server.ensureSubscribedForUser(currentUserId); // <-- ВОТ ЭТО ДОБАВИТЬ
+        server.ensureSubscribedForUser(currentUserId);
 
         sendLine(Protocol.OK + " LOGGED_IN userId=" + u.getId() + " username=" + u.getUsername());
     }
@@ -156,10 +148,6 @@ public class ClientHandler implements Runnable {
         }
     }
 
-    /**
-     * CREATE_CHAT <title> | <id1,id2,...>
-     * Example: CREATE_CHAT My group | 1,2,3
-     */
     private void handleCreateChat(String args) {
         requireLogin();
         if (!args.contains("|")) {
@@ -177,7 +165,7 @@ public class ClientHandler implements Runnable {
         }
 
         Set<Long> participants = new LinkedHashSet<>();
-        participants.add(currentUserId); // always include creator
+        participants.add(currentUserId);
 
         if (!ids.isBlank()) {
             for (String s : ids.split(",")) {
@@ -187,13 +175,11 @@ public class ClientHandler implements Runnable {
             }
         }
 
-        // validate users exist
         List<Long> participantList = new ArrayList<>(participants);
         for (Long uid : participantList) userService.getUser(uid);
 
         Chat chat = chatService.createChat(title, participantList);
 
-        // server subscribes to chat events once, so NEW_MESSAGE broadcasts happen
         server.ensureChatSubscribed(chat.getId());
 
         sendLine(Protocol.OK + " CHAT_CREATED chatId=" + chat.getId()
@@ -205,7 +191,6 @@ public class ClientHandler implements Runnable {
         requireLogin();
         List<Chat> chats = chatService.listChats();
 
-        // фильтруем только те чаты, где состоит текущий пользователь
         List<Chat> mine = new ArrayList<>();
         for (Chat c : chats) {
             if (c.getParticipantIds().contains(currentUserId)) {
@@ -236,7 +221,6 @@ public class ClientHandler implements Runnable {
         long chatId = Long.parseLong(p[0]);
         String text = p[1];
 
-        // must be participant
         Chat chat = chatService.getChat(chatId);
         if (!chat.getParticipantIds().contains(currentUserId)) {
             sendLine(Protocol.ERROR + " You are not a participant of chatId=" + chatId);
@@ -246,13 +230,10 @@ public class ClientHandler implements Runnable {
         server.ensureChatSubscribed(chatId);
         Message msg = chatService.sendText(chatId, currentUserId, text);
         sendLine(Protocol.OK + " SENT messageId=" + msg.getId() + " status=" + msg.getStatus());
-        // Broadcasting happens via server's ChatEventListener onNewMessage()
     }
 
     private void handleSendVoiceLink(String args) {
         requireLogin();
-        // Формат: SEND_VOICE_LINK <chatId> <title> | <url>
-        // Пример: SEND_VOICE_LINK 3 Голосовое #1 | https://drive.google.com/file/d/...
         if (!args.contains("|")) {
             sendLine(Protocol.ERROR + " Usage: SEND_VOICE_LINK <chatId> <title> | <url>");
             return;
@@ -381,8 +362,6 @@ public class ClientHandler implements Runnable {
     private String escape(String s) {
         return s.replace("\n", "\\n").replace("\r", "\\r");
     }
-
-    // ---------------- parsing helpers ----------------
 
     private String firstToken(String line) {
         int idx = line.indexOf(' ');

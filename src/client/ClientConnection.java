@@ -20,7 +20,6 @@ public class ClientConnection implements Closeable {
         this.in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
         this.out = new PrintWriter(new OutputStreamWriter(socket.getOutputStream()), true);
 
-        // стартуем reader
         this.readerThread = new Thread(this::readerLoop, "server-reader");
         this.readerThread.setDaemon(true);
         this.readerThread.start();
@@ -32,7 +31,7 @@ public class ClientConnection implements Closeable {
             while ((line = in.readLine()) != null) {
                 if (line.startsWith(Protocol.EVENT)) {
                     System.out.println();
-                    renderEvent(line);      // <-- добавили
+                    renderEvent(line);
                     System.out.print(">> ");
                 } else {
                     responses.offer(line);
@@ -43,12 +42,11 @@ public class ClientConnection implements Closeable {
     }
 
     private void renderEvent(String line) {
-        // EVENT NEW_TEXT chatId=3 senderId=1 text=Hello...
         if (line.startsWith("EVENT NEW_TEXT")) {
             String chatId = getField(line, "chatId");
             String sender = firstNonEmpty(getField(line, "sender"), getField(line, "senderId"));
             String text = getAfter(line, "text=");
-            String chatTitle = getValue(line, "chatTitle"); // <-- новое
+            String chatTitle = getValue(line, "chatTitle");
             String chatLabel = (chatTitle != null && !chatTitle.isBlank())
                     ? unescape(chatTitle)
                     : ("chat " + chatId);
@@ -58,19 +56,16 @@ public class ClientConnection implements Closeable {
             return;
         }
 
-        // EVENT NEW_VOICE chatId=3 senderId=2 title=... url=...
         if (line.startsWith("EVENT NEW_VOICE")) {
             String chatId = getField(line, "chatId");
             String sender = firstNonEmpty(getField(line, "sender"), getField(line, "senderId"));
             String title = getAfter(line, "title=");
-            // title=... url=...  -> title у нас может “съесть” url, поэтому отделяем:
             String url = getAfter(line, "url=");
 
-            // нормализация если title содержит " url="
             int cut = title.indexOf(" url=");
             if (cut >= 0) title = title.substring(0, cut);
 
-            String chatTitle = getValue(line, "chatTitle"); // <-- новое
+            String chatTitle = getValue(line, "chatTitle");
             String chatLabel = (chatTitle != null && !chatTitle.isBlank())
                     ? unescape(chatTitle)
                     : ("chat " + chatId);
@@ -80,7 +75,6 @@ public class ClientConnection implements Closeable {
             return;
         }
 
-        // EVENT NEW_MEDIA chatId=.. senderId=.. title=.. url=..
         if (line.startsWith("EVENT NEW_MEDIA")) {
             String chatId = getField(line, "chatId");
             String sender = firstNonEmpty(getField(line, "sender"), getField(line, "senderId"));
@@ -90,7 +84,7 @@ public class ClientConnection implements Closeable {
             int cut = title.indexOf(" url=");
             if (cut >= 0) title = title.substring(0, cut);
 
-            String chatTitle = getValue(line, "chatTitle"); // <-- новое
+            String chatTitle = getValue(line, "chatTitle");
             String chatLabel = (chatTitle != null && !chatTitle.isBlank())
                     ? unescape(chatTitle)
                     : ("chat " + chatId);
@@ -100,7 +94,6 @@ public class ClientConnection implements Closeable {
             return;
         }
 
-        // EVENT NEW_FILE chatId=.. senderId=.. name=.. url=..
         if (line.startsWith("EVENT NEW_FILE")) {
             String chatId = getField(line, "chatId");
             String sender = firstNonEmpty(getField(line, "sender"), getField(line, "senderId"));
@@ -110,7 +103,7 @@ public class ClientConnection implements Closeable {
             int cut = name.indexOf(" url=");
             if (cut >= 0) name = name.substring(0, cut);
 
-            String chatTitle = getValue(line, "chatTitle"); // <-- новое
+            String chatTitle = getValue(line, "chatTitle");
             String chatLabel = (chatTitle != null && !chatTitle.isBlank())
                     ? unescape(chatTitle)
                     : ("chat " + chatId);
@@ -120,13 +113,12 @@ public class ClientConnection implements Closeable {
             return;
         }
 
-        // EVENT NEW_IMAGE chatId=.. senderId=.. file=..
         if (line.startsWith("EVENT NEW_IMAGE")) {
             String chatId = getField(line, "chatId");
             String sender = firstNonEmpty(getField(line, "sender"), getField(line, "senderId"));
             String file = getAfter(line, "file=");
 
-            String chatTitle = getValue(line, "chatTitle"); // <-- новое
+            String chatTitle = getValue(line, "chatTitle");
             String chatLabel = (chatTitle != null && !chatTitle.isBlank())
                     ? unescape(chatTitle)
                     : ("chat " + chatId);
@@ -135,7 +127,6 @@ public class ClientConnection implements Closeable {
             return;
         }
 
-        // fallback
         System.out.println(line);
     }
 
@@ -144,7 +135,6 @@ public class ClientConnection implements Closeable {
     }
 
     private String getField(String line, String key) {
-        // finds key=value where value ends at space
         int idx = line.indexOf(key + "=");
         if (idx < 0) return "";
         idx += (key.length() + 1);
@@ -164,13 +154,11 @@ public class ClientConnection implements Closeable {
         if (start < 0) return "";
         start += key.length() + 1;
 
-        // ищем начало следующего поля вида " something="
         int end = line.length();
         for (int i = start; i < line.length() - 1; i++) {
             if (line.charAt(i) == ' ') {
                 int eq = line.indexOf('=', i + 1);
                 if (eq > 0) {
-                    // проверяем что между пробелом и '=' нет пробелов => похоже на key=
                     boolean ok = true;
                     for (int j = i + 1; j < eq; j++) {
                         if (line.charAt(j) == ' ') { ok = false; break; }
@@ -188,21 +176,17 @@ public class ClientConnection implements Closeable {
     }
 
     private String highlightHttps(String s) {
-        // лёгкая “подсветка” ссылок
         return s.replace("https://", "🔗 https://");
     }
 
-    /** Отправить команду на сервер */
     public void send(String line) {
         out.println(line);
     }
 
-    /** Взять одну строку ответа (блокирующе) */
     public String takeLine() throws InterruptedException {
         return responses.take();
     }
 
-    /** Выполнить запрос и получить первую строку ответа */
     public String requestOneLine(String cmd) throws InterruptedException {
         send(cmd);
         return takeLine();

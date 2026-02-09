@@ -13,7 +13,6 @@ public class Chat {
     private final List<Long> participantIds = new ArrayList<>();
     private final List<Message> messages = new ArrayList<>();
 
-    // Observer listeners (подписчики на события чата)
     private final List<ChatEventListener> listeners = new ArrayList<>();
 
     public Chat(long id, String title) {

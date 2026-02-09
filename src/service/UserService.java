@@ -15,14 +15,12 @@ public class UserService implements UserLookup {
         this.users = users;
     }
 
-    // CRUD: Create
     public User createUser(String username) {
         User u = new User(IdGenerator.nextId(), username);
         users.add(u);
         return u;
     }
 
-    // CRUD: Read
     public User getUser(long id) {
         return users.findById(id).orElseThrow(() -> new UserNotFoundException(id));
     }
@@ -31,24 +29,32 @@ public class UserService implements UserLookup {
         return users.findAll();
     }
 
-    // CRUD: Update
     public void renameUser(long id, String newName) {
         User u = getUser(id);
         u.setUsername(newName);
         users.update(u);
     }
 
-    // CRUD: Delete
     public void deleteUser(long id) {
         users.deleteById(id);
     }
 
-    // Business operation
     public void addContact(long ownerId, long targetId, String alias) {
         User owner = getUser(ownerId);
         User target = getUser(targetId);
 
-        owner.addContact(new Contact(IdGenerator.nextId(), target, alias));
+        owner.addOrUpdateContact(new Contact(IdGenerator.nextId(), target, alias));
+        users.update(owner);
+    }
+
+    public List<Contact> listContacts(long ownerId) {
+        User owner = getUser(ownerId);
+        return owner.getContacts();
+    }
+
+    public void removeContact(long ownerId, long targetUserId) {
+        User owner = getUser(ownerId);
+        owner.removeContactByTargetId(targetUserId);
         users.update(owner);
     }
 }
