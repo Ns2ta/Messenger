@@ -5,11 +5,11 @@ import java.time.Instant;
 public abstract class Message {
     public enum Status { SENT, DELIVERED, READ }
 
-    protected final long id;
-    protected final long chatId;
-    protected final long senderId;
-    protected final Instant timestamp;
-    protected Status status;
+    private final long id;
+    private final long chatId;
+    private final long senderId;
+    private final Instant timestamp;
+    private Status status;
 
 
     protected Message(long id, long chatId, long senderId, Instant timestamp) {
