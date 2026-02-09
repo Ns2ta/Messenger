@@ -90,35 +90,62 @@ public class ChatServer implements ChatEventListener {
     // Observer event: chat got a new message -> broadcast to online participants
     @Override
     public void onNewMessage(Chat chat, Message message) {
-        String chatTitle = safe(chat.getTitle());
-        String senderName = safe(userService.getUser(message.getSenderId()).getUsername());
+        // IMPORTANT:
+        // Push notifications MUST start with "EVENT".
+        // Otherwise the client will treat them as normal command responses,
+        // they will land in the responses queue and will break parsing
+        // (exactly the crash you saw in HISTORY).
 
-        String line;
+        long chatId = chat.getId();
+        long senderId = message.getSenderId();
+        String senderName = safe(userService.getUser(senderId).getUsername());
 
-        if (message instanceof domain.message.VoiceLinkMessage vm) {
-            line = "🔔 [" + chatTitle + "] " + senderName
-                    + " 🎙 Voice: " + safe(vm.getTitle())
-                    + " (" + safe(vm.getUrl()) + ")";
+        String eventLine;
+
+        if (message instanceof domain.message.TextMessage tm) {
+            eventLine = Protocol.EVENT + " NEW_TEXT"
+                    + " chatId=" + chatId
+                    + " senderId=" + senderId
+                    + " sender=" + senderName
+                    + " text=" + safe(tm.getText());
+        } else if (message instanceof domain.message.VoiceLinkMessage vm) {
+            eventLine = Protocol.EVENT + " NEW_VOICE"
+                    + " chatId=" + chatId
+                    + " senderId=" + senderId
+                    + " sender=" + senderName
+                    + " title=" + safe(vm.getTitle())
+                    + " url=" + safe(vm.getUrl());
         } else if (message instanceof domain.message.MediaLinkMessage mm) {
-            line = "🔔 [" + chatTitle + "] " + senderName
-                    + " 🎞 Media: " + safe(mm.getTitle())
-                    + " (" + safe(mm.getUrl()) + ")";
+            eventLine = Protocol.EVENT + " NEW_MEDIA"
+                    + " chatId=" + chatId
+                    + " senderId=" + senderId
+                    + " sender=" + senderName
+                    + " title=" + safe(mm.getTitle())
+                    + " url=" + safe(mm.getUrl());
         } else if (message instanceof domain.message.FileLinkMessage fm) {
-            line = "🔔 [" + chatTitle + "] " + senderName
-                    + " 📎 File: " + safe(fm.getFileName())
-                    + " (" + safe(fm.getUrl()) + ")";
+            eventLine = Protocol.EVENT + " NEW_FILE"
+                    + " chatId=" + chatId
+                    + " senderId=" + senderId
+                    + " sender=" + senderName
+                    + " name=" + safe(fm.getFileName())
+                    + " url=" + safe(fm.getUrl());
         } else if (message instanceof domain.message.ImageMessage im) {
-            line = "🔔 [" + chatTitle + "] " + senderName
-                    + " 🖼 Image: " + safe(im.getPathOrName());
-        } else if (message instanceof domain.message.TextMessage tm) {
-            line = "🔔 [" + chatTitle + "] " + senderName + ": " + safe(tm.getText());
+            eventLine = Protocol.EVENT + " NEW_IMAGE"
+                    + " chatId=" + chatId
+                    + " senderId=" + senderId
+                    + " sender=" + senderName
+                    + " file=" + safe(im.getPathOrName());
         } else {
-            line = "🔔 [" + chatTitle + "] " + senderName + ": " + safe(message.preview());
+            eventLine = Protocol.EVENT + " NEW_MESSAGE"
+                    + " chatId=" + chatId
+                    + " senderId=" + senderId
+                    + " sender=" + senderName
+                    + " text=" + safe(message.preview());
         }
 
         for (Long uid : chat.getParticipantIds()) {
             ClientHandler h = online.get(uid);
-            if (h != null) h.sendLine(line);
+            if (h != null) h.sendLine(eventLine);
         }
     }
 

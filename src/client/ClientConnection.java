@@ -46,9 +46,9 @@ public class ClientConnection implements Closeable {
         // EVENT NEW_TEXT chatId=3 senderId=1 text=Hello...
         if (line.startsWith("EVENT NEW_TEXT")) {
             String chatId = getField(line, "chatId");
-            String senderId = getField(line, "senderId");
+            String sender = firstNonEmpty(getField(line, "sender"), getField(line, "senderId"));
             String text = getAfter(line, "text=");
-            System.out.println("💬 NEW TEXT (chat " + chatId + ", from " + senderId + ")");
+            System.out.println("💬 NEW TEXT (chat " + chatId + ", from " + sender + ")");
             System.out.println("    " + highlightHttps(unescape(text)));
             return;
         }
@@ -56,7 +56,7 @@ public class ClientConnection implements Closeable {
         // EVENT NEW_VOICE chatId=3 senderId=2 title=... url=...
         if (line.startsWith("EVENT NEW_VOICE")) {
             String chatId = getField(line, "chatId");
-            String senderId = getField(line, "senderId");
+            String sender = firstNonEmpty(getField(line, "sender"), getField(line, "senderId"));
             String title = getAfter(line, "title=");
             // title=... url=...  -> title у нас может “съесть” url, поэтому отделяем:
             String url = getAfter(line, "url=");
@@ -65,14 +65,61 @@ public class ClientConnection implements Closeable {
             int cut = title.indexOf(" url=");
             if (cut >= 0) title = title.substring(0, cut);
 
-            System.out.println("🎙 NEW VOICE (chat " + chatId + ", from " + senderId + ")");
+            System.out.println("🎙 NEW VOICE (chat " + chatId + ", from " + sender + ")");
             System.out.println("    Title: " + unescape(title));
             System.out.println("    Link : " + unescape(url));
             return;
         }
 
+        // EVENT NEW_MEDIA chatId=.. senderId=.. title=.. url=..
+        if (line.startsWith("EVENT NEW_MEDIA")) {
+            String chatId = getField(line, "chatId");
+            String sender = firstNonEmpty(getField(line, "sender"), getField(line, "senderId"));
+            String title = getAfter(line, "title=");
+            String url = getAfter(line, "url=");
+
+            int cut = title.indexOf(" url=");
+            if (cut >= 0) title = title.substring(0, cut);
+
+            System.out.println("🎞 NEW MEDIA (chat " + chatId + ", from " + sender + ")");
+            System.out.println("    Title: " + unescape(title));
+            System.out.println("    Link : " + unescape(url));
+            return;
+        }
+
+        // EVENT NEW_FILE chatId=.. senderId=.. name=.. url=..
+        if (line.startsWith("EVENT NEW_FILE")) {
+            String chatId = getField(line, "chatId");
+            String sender = firstNonEmpty(getField(line, "sender"), getField(line, "senderId"));
+            String name = getAfter(line, "name=");
+            String url = getAfter(line, "url=");
+
+            int cut = name.indexOf(" url=");
+            if (cut >= 0) name = name.substring(0, cut);
+
+            System.out.println("📎 NEW FILE (chat " + chatId + ", from " + sender + ")");
+            System.out.println("    Name : " + unescape(name));
+            System.out.println("    Link : " + unescape(url));
+            return;
+        }
+
+        // EVENT NEW_IMAGE chatId=.. senderId=.. file=..
+        if (line.startsWith("EVENT NEW_IMAGE")) {
+            String chatId = getField(line, "chatId");
+            String sender = firstNonEmpty(getField(line, "sender"), getField(line, "senderId"));
+            String file = getAfter(line, "file=");
+
+            System.out.println("🖼 NEW IMAGE (chat " + chatId + ", from " + sender + ")");
+            System.out.println("    File : " + unescape(file));
+            return;
+        }
+
         // fallback
         System.out.println(line);
+    }
+
+    private String firstNonEmpty(String a, String b) {
+        return (a != null && !a.isEmpty()) ? a : b;
     }
 
     private String getField(String line, String key) {
