@@ -15,6 +15,9 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.HashSet;
+import java.util.Set;
+import domain.Chat;
 
 /**
  * Single JVM server:
@@ -67,38 +70,61 @@ public class ChatServer implements ChatEventListener {
     }
 
     // Subscribe server to chat events so it can broadcast NEW_MESSAGE
+    private final Set<Long> subscribedChats = new HashSet<>();
+
     public void ensureChatSubscribed(long chatId) {
-        chatService.subscribeToChat(chatId, this);
+        if (subscribedChats.contains(chatId)) return;
+
+        Chat chat = chatService.getChat(chatId);
+        chat.subscribe(this); // Observer: сервер подписывается на чат
+        subscribedChats.add(chatId);
+    }
+    public void ensureSubscribedForUser(long userId) {
+        for (Chat c : chatService.listChats()) {
+            if (c.getParticipantIds().contains(userId)) {
+                ensureChatSubscribed(c.getId());
+            }
+        }
     }
 
     // Observer event: chat got a new message -> broadcast to online participants
     @Override
     public void onNewMessage(Chat chat, Message message) {
+        String chatTitle = safe(chat.getTitle());
+        String senderName = safe(userService.getUser(message.getSenderId()).getUsername());
+
         String line;
 
         if (message instanceof domain.message.VoiceLinkMessage vm) {
-            line = Protocol.EVENT + " NEW_VOICE"
-                    + " chatId=" + chat.getId()
-                    + " senderId=" + vm.getSenderId()
-                    + " title=" + safe(vm.getTitle())
-                    + " url=" + safe(vm.getUrl());
+            line = "🔔 [" + chatTitle + "] " + senderName
+                    + " 🎙 Voice: " + safe(vm.getTitle())
+                    + " (" + safe(vm.getUrl()) + ")";
+        } else if (message instanceof domain.message.MediaLinkMessage mm) {
+            line = "🔔 [" + chatTitle + "] " + senderName
+                    + " 🎞 Media: " + safe(mm.getTitle())
+                    + " (" + safe(mm.getUrl()) + ")";
+        } else if (message instanceof domain.message.FileLinkMessage fm) {
+            line = "🔔 [" + chatTitle + "] " + senderName
+                    + " 📎 File: " + safe(fm.getFileName())
+                    + " (" + safe(fm.getUrl()) + ")";
+        } else if (message instanceof domain.message.ImageMessage im) {
+            line = "🔔 [" + chatTitle + "] " + senderName
+                    + " 🖼 Image: " + safe(im.getPathOrName());
+        } else if (message instanceof domain.message.TextMessage tm) {
+            line = "🔔 [" + chatTitle + "] " + senderName + ": " + safe(tm.getText());
         } else {
-            line = Protocol.EVENT + " NEW_TEXT"
-                    + " chatId=" + chat.getId()
-                    + " senderId=" + message.getSenderId()
-                    + " text=" + safe(message.preview());
+            line = "🔔 [" + chatTitle + "] " + senderName + ": " + safe(message.preview());
         }
 
         for (Long uid : chat.getParticipantIds()) {
             ClientHandler h = online.get(uid);
-            if (h != null) {
-                h.sendLine(line);
-            }
+            if (h != null) h.sendLine(line);
         }
     }
 
+
     private String safe(String s) {
-        // We keep protocol line-based; replace newlines so they don't break reading.
+        if (s == null) return "";
         return s.replace("\n", "\\n").replace("\r", "\\r");
     }
 

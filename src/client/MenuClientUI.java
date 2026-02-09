@@ -274,15 +274,21 @@ public class MenuClientUI {
     private void chatScreen(ChatRow chat) throws Exception {
         while (true) {
             System.out.println("\n=== " + chat.title + " ===");
-            System.out.println("1) Показать историю");
-            System.out.println("2) Отправить сообщение");
+            System.out.println("1) История");
+            System.out.println("2) Текст");
+            System.out.println("3) Voice (Drive ссылка)");
+            System.out.println("4) Media (фото/видео ссылкой)");
+            System.out.println("5) Files (файл ссылкой)");
             System.out.println("0) Назад");
             System.out.print(">> ");
             String c = sc.nextLine().trim();
 
             switch (c) {
                 case "1" -> showHistory(chat.chatId);
-                case "2" -> sendMessage(chat.chatId);
+                case "2" -> sendText(chat.chatId);
+                case "3" -> sendVoiceLink(chat.chatId);
+                case "4" -> sendMediaLink(chat.chatId);
+                case "5" -> sendFileLink(chat.chatId);
                 case "0" -> { return; }
                 default -> System.out.println("Неверный выбор.");
             }
@@ -308,10 +314,6 @@ public class MenuClientUI {
     }
 
     private void renderHistoryLine(String line) {
-        // line format:
-        // kind=VOICE|ts=...|senderId=...|status=...|title=...|url=...
-        // or kind=TEXT|ts=...|senderId=...|status=...|text=...
-
         if (!line.contains("kind=")) {
             System.out.println(line);
             return;
@@ -319,25 +321,51 @@ public class MenuClientUI {
 
         String kind = getBetween(line, "kind=", "|");
         String ts = getBetween(line, "ts=", "|");
-        String sender = getBetween(line, "senderId=", "|");
-        String status = getBetween(line, "status=", "|");
+        String sender = getBetween(line, "sender=", "|"); // сервер сейчас шлёт sender=
+        String status = getBetween(line, "status=", "|"); // может быть пустым
 
-        if ("VOICE".equals(kind)) {
-            String title = getBetween(line, "title=", "|");
-            String url = after(line, "url=");
-            System.out.println("🎙 VOICE  [" + ts + "] sender=" + sender + " (" + status + ")");
-            System.out.println("    Title: " + title);
-            System.out.println("    Link : " + url);
-        } else {
-            String text = after(line, "text=");
-            System.out.println("💬 TEXT   [" + ts + "] sender=" + sender + " (" + status + ")");
-            System.out.println("    " + highlightHttps(text));
+        switch (kind) {
+            case "VOICE" -> {
+                String title = getBetween(line, "title=", "|");
+                String url = after(line, "url=");
+                System.out.println("🎙 VOICE  [" + ts + "] from=" + sender + formatStatus(status));
+                System.out.println("    Title: " + title);
+                System.out.println("    Link : " + url);
+            }
+            case "MEDIA" -> {
+                String title = getBetween(line, "title=", "|");
+                String url = after(line, "url=");
+                System.out.println("🎞 MEDIA  [" + ts + "] from=" + sender + formatStatus(status));
+                System.out.println("    Title: " + title);
+                System.out.println("    Link : " + url);
+            }
+            case "FILE" -> {
+                String name = getBetween(line, "name=", "|");
+                String url = after(line, "url=");
+                System.out.println("📎 FILE   [" + ts + "] from=" + sender + formatStatus(status));
+                System.out.println("    Name : " + name);
+                System.out.println("    Link : " + url);
+            }
+            case "IMAGE" -> {
+                String file = after(line, "file=");
+                System.out.println("🖼 IMAGE  [" + ts + "] from=" + sender + formatStatus(status));
+                System.out.println("    File : " + file);
+            }
+            default -> { // TEXT и всё остальное
+                String text = after(line, "text=");
+                System.out.println("💬 TEXT   [" + ts + "] from=" + sender + formatStatus(status));
+                System.out.println("    " + highlightHttps(text));
+            }
         }
     }
 
+    private String formatStatus(String status) {
+        return (status == null || status.isEmpty()) ? "" : " (" + status + ")";
+    }
+
+
     private String highlightHttps(String text) {
-        // просто визуально выделим ссылки
-        return text.replace("https://", "[https://");
+        return text.replace("https://", "🔗 https://");
     }
 
     private String getBetween(String s, String start, String until) {
@@ -382,7 +410,6 @@ public class MenuClientUI {
             System.out.println("Отмена.");
             return;
         }
-
         System.out.print("Ссылка Google Drive (https://drive.google.com/... или https://docs.google.com/...): ");
         String url = sc.nextLine().trim();
         if (url.isEmpty()) {
@@ -392,6 +419,32 @@ public class MenuClientUI {
 
         // Команда на сервер (title | url)
         String resp = conn.requestOneLine("SEND_VOICE_LINK " + chatId + " " + title + " | " + url);
+        System.out.println(resp);
+    }
+
+    private void sendMediaLink(long chatId) throws Exception {
+        System.out.print("Название медиа (например: \"video\", \"photo\"): ");
+        String title = sc.nextLine().trim();
+        if (title.isEmpty()) { System.out.println("Отмена."); return; }
+
+        System.out.print("Ссылка https (на фото/видео): ");
+        String url = sc.nextLine().trim();
+        if (url.isEmpty()) { System.out.println("Отмена."); return; }
+
+        String resp = conn.requestOneLine(Protocol.SEND_MEDIA_LINK + " " + chatId + " " + title + " | " + url);
+        System.out.println(resp);
+    }
+
+    private void sendFileLink(long chatId) throws Exception {
+        System.out.print("Имя файла (например: report.pdf): ");
+        String name = sc.nextLine().trim();
+        if (name.isEmpty()) { System.out.println("Отмена."); return; }
+
+        System.out.print("Ссылка https (на файл): ");
+        String url = sc.nextLine().trim();
+        if (url.isEmpty()) { System.out.println("Отмена."); return; }
+
+        String resp = conn.requestOneLine(Protocol.SEND_FILE_LINK + " " + chatId + " " + name + " | " + url);
         System.out.println(resp);
     }
 

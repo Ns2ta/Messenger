@@ -11,17 +11,19 @@ import repository.ChatRepository;
 import util.IdGenerator;
 import util.TimeProvider;
 import domain.message.VoiceLinkMessage;
+import domain.message.MediaLinkMessage;
+import domain.message.FileLinkMessage;
 import exception.InvalidLinkException;
 
 import java.util.List;
 
 public class ChatService {
     private final ChatRepository chats;
-    private final UserService userService;
+    private final UserLookup userLookup;
 
-    public ChatService(ChatRepository chats, UserService userService) {
-        this.chats = chats;
-        this.userService = userService;
+    public ChatService(ChatRepository chatRepository, UserLookup userLookup) {
+        this.chats = chatRepository;
+        this.userLookup = userLookup;
     }
 
     // CRUD: Create
@@ -29,7 +31,7 @@ public class ChatService {
         Chat chat = new Chat(IdGenerator.nextId(), title);
         for (long uid : participantIds) {
             // проверим, что пользователь существует
-            User u = userService.getUser(uid);
+            User u = userLookup.getUser(uid);
             chat.addParticipant(u.getId());
         }
         chats.add(chat);
@@ -67,7 +69,7 @@ public class ChatService {
     // Messaging operations
     public Message sendText(long chatId, long senderId, String text) {
         Chat chat = getChat(chatId);
-        userService.getUser(senderId); // validate
+        userLookup.getUser(senderId); // validate
 
         Message msg = new TextMessage(IdGenerator.nextId(), chatId, senderId, TimeProvider.now(), text);
         chat.addMessage(msg);
@@ -77,7 +79,7 @@ public class ChatService {
 
     public Message sendImage(long chatId, long senderId, String pathOrName) {
         Chat chat = getChat(chatId);
-        userService.getUser(senderId); // validate
+        userLookup.getUser(senderId); // validate
 
         Message msg = new ImageMessage(IdGenerator.nextId(), chatId, senderId, TimeProvider.now(), pathOrName);
         chat.addMessage(msg);
@@ -86,7 +88,7 @@ public class ChatService {
     }
     public VoiceLinkMessage sendVoiceLink(long chatId, long senderId, String title, String url) {
         Chat chat = getChat(chatId);
-        userService.getUser(senderId);
+        userLookup.getUser(senderId);
 
         if (!isGoogleDriveHttps(url)) {
             throw new InvalidLinkException("Voice link must be Google Drive https link (drive.google.com or docs.google.com)");
@@ -103,6 +105,52 @@ public class ChatService {
         chats.update(chat);
         return msg;
     }
+    public domain.message.MediaLinkMessage sendMediaLink(long chatId, long senderId, String title, String url) {
+        Chat chat = getChat(chatId);
+        userLookup.getUser(senderId);
+
+        if (!isGoogleDriveHttps(url)) {
+            throw new InvalidLinkException("Media link must be Google Drive https link (drive.google.com or docs.google.com)");
+        }
+        if (title == null || title.trim().isEmpty()) {
+            throw new InvalidLinkException("Title must not be empty");
+        }
+
+        domain.message.MediaLinkMessage msg = new domain.message.MediaLinkMessage(
+                IdGenerator.nextId(), chatId, senderId, TimeProvider.now(),
+                title.trim(), url.trim()
+        );
+
+        chat.addMessage(msg);
+        chats.update(chat);
+        return msg;
+    }
+
+    public domain.message.FileLinkMessage sendFileLink(long chatId, long senderId, String fileName, String url) {
+        Chat chat = getChat(chatId);
+        userLookup.getUser(senderId);
+
+        if (!isGoogleDriveHttps(url)) {
+            throw new InvalidLinkException("File link must be Google Drive https link (drive.google.com or docs.google.com)");
+        }
+        if (fileName == null || fileName.trim().isEmpty()) {
+            throw new InvalidLinkException("File name must not be empty");
+        }
+
+        domain.message.FileLinkMessage msg = new domain.message.FileLinkMessage(
+                IdGenerator.nextId(), chatId, senderId, TimeProvider.now(),
+                fileName.trim(), url.trim()
+        );
+
+        chat.addMessage(msg);
+        chats.update(chat);
+        return msg;
+    }
+
+    private boolean isAnyHttps(String url) {
+        if (url == null) return false;
+        return url.trim().startsWith("https://");
+    }
 
     private boolean isGoogleDriveHttps(String url) {
         if (url == null) return false;
@@ -113,7 +161,7 @@ public class ChatService {
     }
 
     public List<Message> getHistory(long chatId) {
-        return getChat(chatId).getMessages();
+        return List.copyOf(getChat(chatId).getMessages());
     }
 
     public void markAllDelivered(long chatId) {

@@ -4,6 +4,10 @@ import domain.Chat;
 import domain.User;
 import domain.message.Message;
 import domain.message.VoiceLinkMessage;
+import domain.message.ImageMessage;
+import domain.message.TextMessage;
+import domain.message.MediaLinkMessage;
+import domain.message.FileLinkMessage;
 import net.Protocol;
 import service.ChatService;
 import service.UserService;
@@ -12,7 +16,6 @@ import service.UserService;
 import java.io.*;
 import java.net.Socket;
 import java.util.*;
-import java.util.stream.Collectors;
 
 /**
  * One handler per client connection.
@@ -66,6 +69,8 @@ public class ClientHandler implements Runnable {
 
                         case Protocol.SEND_TEXT -> handleSendText(args);
                         case Protocol.SEND_VOICE_LINK -> handleSendVoiceLink(args);
+                        case Protocol.SEND_MEDIA_LINK -> handleSendMediaLink(args);
+                        case Protocol.SEND_FILE_LINK -> handleSendFileLink(args);
                         case Protocol.HISTORY -> handleHistory(args);
 
                         default -> sendLine(Protocol.ERROR + " Unknown command. Type HELP");
@@ -114,8 +119,10 @@ public class ClientHandler implements Runnable {
         // auto login
         currentUserId = u.getId();
         server.registerOnline(currentUserId, this);
+        server.ensureSubscribedForUser(currentUserId); // <-- ВОТ ЭТО ДОБАВИТЬ
 
         sendLine(Protocol.OK + " REGISTERED userId=" + u.getId() + " username=" + u.getUsername());
+
     }
 
     private void handleLogin(String args) {
@@ -128,6 +135,7 @@ public class ClientHandler implements Runnable {
 
         currentUserId = u.getId();
         server.registerOnline(currentUserId, this);
+        server.ensureSubscribedForUser(currentUserId); // <-- ВОТ ЭТО ДОБАВИТЬ
 
         sendLine(Protocol.OK + " LOGGED_IN userId=" + u.getId() + " username=" + u.getUsername());
     }
@@ -207,11 +215,16 @@ public class ClientHandler implements Runnable {
 
         sendLine(Protocol.OK + " CHATS count=" + mine.size());
         for (Chat c : mine) {
-            sendLine("  chatId=" + c.getId() + "|title=" + c.getTitle()
-                    + "|participants=" + c.getParticipantIds());
+            String participantsNames = c.getParticipantIds().stream()
+                    .map(id -> userService.getUser(id).getUsername())
+                    .reduce((a, b) -> a + "," + b)
+                    .orElse("");
+
+            sendLine("  chatId=" + c.getId()
+                    + "|title=" + c.getTitle()
+                    + "|participants=" + participantsNames);
         }
     }
-
 
     private void handleSendText(String args) {
         requireLogin();
@@ -230,6 +243,7 @@ public class ClientHandler implements Runnable {
             return;
         }
 
+        server.ensureChatSubscribed(chatId);
         Message msg = chatService.sendText(chatId, currentUserId, text);
         sendLine(Protocol.OK + " SENT messageId=" + msg.getId() + " status=" + msg.getStatus());
         // Broadcasting happens via server's ChatEventListener onNewMessage()
@@ -262,9 +276,62 @@ public class ClientHandler implements Runnable {
             sendLine(Protocol.ERROR + " You are not a participant of chatId=" + chatId);
             return;
         }
-
+        server.ensureChatSubscribed(chatId);
         var msg = chatService.sendVoiceLink(chatId, currentUserId, title, url);
         sendLine(Protocol.OK + " SENT messageId=" + msg.getId() + " kind=VOICE");
+    }
+
+    private void handleSendMediaLink(String args) {
+        requireLogin();
+        if (!args.contains("|")) {
+            sendLine(Protocol.ERROR + " Usage: SEND_MEDIA_LINK <chatId> <title> | <url>");
+            return;
+        }
+        String[] lr = args.split("\\|", 2);
+        String left = lr[0].trim();
+        String url = lr[1].trim();
+
+        String[] lp = left.split("\\s+", 2);
+        if (lp.length < 2) { sendLine(Protocol.ERROR + " Usage: SEND_MEDIA_LINK <chatId> <title> | <url>"); return; }
+
+        long chatId = Long.parseLong(lp[0]);
+        String title = lp[1].trim();
+
+        Chat chat = chatService.getChat(chatId);
+        if (!chat.getParticipantIds().contains(currentUserId)) {
+            sendLine(Protocol.ERROR + " You are not a participant of chatId=" + chatId);
+            return;
+        }
+        server.ensureChatSubscribed(chatId);
+        chatService.sendMediaLink(chatId, currentUserId, title, url);
+        sendLine(Protocol.OK + " SENT kind=MEDIA");
+    }
+
+    private void handleSendFileLink(String args) {
+        requireLogin();
+        if (!args.contains("|")) {
+            sendLine(Protocol.ERROR + " Usage: SEND_FILE_LINK <chatId> <fileName> | <url>");
+            return;
+        }
+        String[] lr = args.split("\\|", 2);
+        String left = lr[0].trim();
+        String url = lr[1].trim();
+
+        String[] lp = left.split("\\s+", 2);
+        if (lp.length < 2) { sendLine(Protocol.ERROR + " Usage: SEND_FILE_LINK <chatId> <fileName> | <url>"); return; }
+
+        long chatId = Long.parseLong(lp[0]);
+        String fileName = lp[1].trim();
+
+        Chat chat = chatService.getChat(chatId);
+        if (!chat.getParticipantIds().contains(currentUserId)) {
+            sendLine(Protocol.ERROR + " You are not a participant of chatId=" + chatId);
+            return;
+        }
+
+        server.ensureChatSubscribed(chatId);
+        chatService.sendFileLink(chatId, currentUserId, fileName, url);
+        sendLine(Protocol.OK + " SENT kind=FILE");
     }
 
     private void handleHistory(String args) {
@@ -285,31 +352,34 @@ public class ClientHandler implements Runnable {
         sendLine(Protocol.OK + " HISTORY chat=" + chat.getTitle() + " count=" + history.size());
 
         for (Message m : history) {
-            String kind = kindOf(m);
+            String senderName = userService.getUser(m.getSenderId()).getUsername();
+            String ts = String.valueOf(m.getTimestamp());
 
-            if ("VOICE".equals(kind) && m instanceof VoiceLinkMessage vm) {
-                sendLine("  kind=VOICE"
-                        + "|ts=" + vm.getTimestamp()
-                        + "|sender=" + userService.getUser(vm.getSenderId()).getUsername()
-                        + "|status=" + vm.getStatus()
-                        + "|title=" + escape(vm.getTitle())
-                        + "|url=" + escape(vm.getUrl()));
+            if (m instanceof VoiceLinkMessage vm) {
+                sendLine("[" + ts + "] " + escape(senderName)
+                        + " 🎙 Voice: " + escape(vm.getTitle())
+                        + " (" + escape(vm.getUrl()) + ")");
+            } else if (m instanceof domain.message.MediaLinkMessage mm) {
+                sendLine("[" + ts + "] " + escape(senderName)
+                        + " 🎞 Media: " + escape(mm.getTitle())
+                        + " (" + escape(mm.getUrl()) + ")");
+            } else if (m instanceof domain.message.FileLinkMessage fm) {
+                sendLine("[" + ts + "] " + escape(senderName)
+                        + " 📎 File: " + escape(fm.getFileName())
+                        + " (" + escape(fm.getUrl()) + ")");
+            } else if (m instanceof domain.message.ImageMessage im) {
+                sendLine("[" + ts + "] " + escape(senderName)
+                        + " 🖼 Image: " + escape(im.getPathOrName()));
+            } else if (m instanceof domain.message.TextMessage tm) {
+                sendLine("[" + ts + "] " + escape(senderName) + ": " + escape(tm.getText()));
             } else {
-                sendLine("  kind=TEXT"
-                        + "|ts=" + m.getTimestamp()
-                        + "|sender=" + userService.getUser(m.getSenderId()).getUsername()
-                        + "|status=" + m.getStatus()
-                        + "|text=" + escape(m.preview()));
+                sendLine("[" + ts + "] " + escape(senderName) + ": " + escape(m.preview()));
             }
         }
     }
 
     private String escape(String s) {
         return s.replace("\n", "\\n").replace("\r", "\\r");
-    }
-
-    private String kindOf(Message m) {
-        return (m instanceof VoiceLinkMessage) ? "VOICE" : "TEXT";
     }
 
     // ---------------- parsing helpers ----------------

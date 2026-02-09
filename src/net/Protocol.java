@@ -11,6 +11,8 @@ public final class Protocol {
     public static final String CHATS = "CHATS";            // CHATS
     public static final String SEND_TEXT = "SEND_TEXT";    // SEND_TEXT <chatId> <text...>
     public static final String SEND_VOICE_LINK = "SEND_VOICE_LINK"; // SEND_VOICE_LINK <chatId> <title> | <url>
+    public static final String SEND_MEDIA_LINK = "SEND_MEDIA_LINK";
+    public static final String SEND_FILE_LINK  = "SEND_FILE_LINK";
     public static final String HISTORY = "HISTORY";        // HISTORY <chatId>
     public static final String HELP = "HELP";              // HELP
     public static final String EXIT = "EXIT";              // EXIT

@@ -1,7 +1,7 @@
 package domain;
 
 public class Contact {
-    private long id;
+    private final long id;
     private User targetUser;
     private String alias;
 

@@ -3,11 +3,12 @@ package domain;
 import domain.message.Message;
 import observer.ChatEventListener;
 
+import java.util.Collections;
 import java.util.ArrayList;
 import java.util.List;
 
 public class Chat {
-    private long id;
+    private final long id;
     private String title;
     private final List<Long> participantIds = new ArrayList<>();
     private final List<Message> messages = new ArrayList<>();
@@ -22,8 +23,13 @@ public class Chat {
 
     public long getId() { return id; }
     public String getTitle() { return title; }
-    public List<Long> getParticipantIds() { return participantIds; }
-    public List<Message> getMessages() { return messages; }
+    public List<Long> getParticipantIds() {
+        return Collections.unmodifiableList(participantIds);
+    }
+
+    public List<Message> getMessages() {
+        return Collections.unmodifiableList(messages);
+    }
 
     public void setTitle(String title) { this.title = title; }
 
