@@ -97,6 +97,7 @@ public class ChatServer implements ChatEventListener {
         // (exactly the crash you saw in HISTORY).
 
         long chatId = chat.getId();
+        String chatTitle = safe(chat.getTitle());
         long senderId = message.getSenderId();
         String senderName = safe(userService.getUser(senderId).getUsername());
 
@@ -105,12 +106,14 @@ public class ChatServer implements ChatEventListener {
         if (message instanceof domain.message.TextMessage tm) {
             eventLine = Protocol.EVENT + " NEW_TEXT"
                     + " chatId=" + chatId
+                    + " chatTitle=" + chatTitle
                     + " senderId=" + senderId
                     + " sender=" + senderName
                     + " text=" + safe(tm.getText());
         } else if (message instanceof domain.message.VoiceLinkMessage vm) {
             eventLine = Protocol.EVENT + " NEW_VOICE"
                     + " chatId=" + chatId
+                    + " chatTitle=" + chatTitle
                     + " senderId=" + senderId
                     + " sender=" + senderName
                     + " title=" + safe(vm.getTitle())
@@ -118,6 +121,7 @@ public class ChatServer implements ChatEventListener {
         } else if (message instanceof domain.message.MediaLinkMessage mm) {
             eventLine = Protocol.EVENT + " NEW_MEDIA"
                     + " chatId=" + chatId
+                    + " chatTitle=" + chatTitle
                     + " senderId=" + senderId
                     + " sender=" + senderName
                     + " title=" + safe(mm.getTitle())
@@ -125,6 +129,7 @@ public class ChatServer implements ChatEventListener {
         } else if (message instanceof domain.message.FileLinkMessage fm) {
             eventLine = Protocol.EVENT + " NEW_FILE"
                     + " chatId=" + chatId
+                    + " chatTitle=" + chatTitle
                     + " senderId=" + senderId
                     + " sender=" + senderName
                     + " name=" + safe(fm.getFileName())
@@ -132,12 +137,14 @@ public class ChatServer implements ChatEventListener {
         } else if (message instanceof domain.message.ImageMessage im) {
             eventLine = Protocol.EVENT + " NEW_IMAGE"
                     + " chatId=" + chatId
+                    + " chatTitle=" + chatTitle
                     + " senderId=" + senderId
                     + " sender=" + senderName
                     + " file=" + safe(im.getPathOrName());
         } else {
             eventLine = Protocol.EVENT + " NEW_MESSAGE"
                     + " chatId=" + chatId
+                    + " chatTitle=" + chatTitle
                     + " senderId=" + senderId
                     + " sender=" + senderName
                     + " text=" + safe(message.preview());

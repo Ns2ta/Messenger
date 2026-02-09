@@ -48,7 +48,12 @@ public class ClientConnection implements Closeable {
             String chatId = getField(line, "chatId");
             String sender = firstNonEmpty(getField(line, "sender"), getField(line, "senderId"));
             String text = getAfter(line, "text=");
-            System.out.println("💬 NEW TEXT (chat " + chatId + ", from " + sender + ")");
+            String chatTitle = getValue(line, "chatTitle"); // <-- новое
+            String chatLabel = (chatTitle != null && !chatTitle.isBlank())
+                    ? unescape(chatTitle)
+                    : ("chat " + chatId);
+
+            System.out.println("💬 NEW TEXT (" + chatLabel + ", from " + sender + ")");
             System.out.println("    " + highlightHttps(unescape(text)));
             return;
         }
@@ -65,7 +70,11 @@ public class ClientConnection implements Closeable {
             int cut = title.indexOf(" url=");
             if (cut >= 0) title = title.substring(0, cut);
 
-            System.out.println("🎙 NEW VOICE (chat " + chatId + ", from " + sender + ")");
+            String chatTitle = getValue(line, "chatTitle"); // <-- новое
+            String chatLabel = (chatTitle != null && !chatTitle.isBlank())
+                    ? unescape(chatTitle)
+                    : ("chat " + chatId);
+            System.out.println("🎙 NEW VOICE (chat " + chatLabel + ", from " + sender + ")");
             System.out.println("    Title: " + unescape(title));
             System.out.println("    Link : " + unescape(url));
             return;
@@ -81,7 +90,11 @@ public class ClientConnection implements Closeable {
             int cut = title.indexOf(" url=");
             if (cut >= 0) title = title.substring(0, cut);
 
-            System.out.println("🎞 NEW MEDIA (chat " + chatId + ", from " + sender + ")");
+            String chatTitle = getValue(line, "chatTitle"); // <-- новое
+            String chatLabel = (chatTitle != null && !chatTitle.isBlank())
+                    ? unescape(chatTitle)
+                    : ("chat " + chatId);
+            System.out.println("🎞 NEW MEDIA (chat " + chatLabel + ", from " + sender + ")");
             System.out.println("    Title: " + unescape(title));
             System.out.println("    Link : " + unescape(url));
             return;
@@ -97,7 +110,11 @@ public class ClientConnection implements Closeable {
             int cut = name.indexOf(" url=");
             if (cut >= 0) name = name.substring(0, cut);
 
-            System.out.println("📎 NEW FILE (chat " + chatId + ", from " + sender + ")");
+            String chatTitle = getValue(line, "chatTitle"); // <-- новое
+            String chatLabel = (chatTitle != null && !chatTitle.isBlank())
+                    ? unescape(chatTitle)
+                    : ("chat " + chatId);
+            System.out.println("📎 NEW FILE (chat " + chatLabel + ", from " + sender + ")");
             System.out.println("    Name : " + unescape(name));
             System.out.println("    Link : " + unescape(url));
             return;
@@ -109,7 +126,11 @@ public class ClientConnection implements Closeable {
             String sender = firstNonEmpty(getField(line, "sender"), getField(line, "senderId"));
             String file = getAfter(line, "file=");
 
-            System.out.println("🖼 NEW IMAGE (chat " + chatId + ", from " + sender + ")");
+            String chatTitle = getValue(line, "chatTitle"); // <-- новое
+            String chatLabel = (chatTitle != null && !chatTitle.isBlank())
+                    ? unescape(chatTitle)
+                    : ("chat " + chatId);
+            System.out.println("🖼 NEW IMAGE (chat " + chatLabel + ", from " + sender + ")");
             System.out.println("    File : " + unescape(file));
             return;
         }
@@ -137,6 +158,30 @@ public class ClientConnection implements Closeable {
         if (idx < 0) return "";
         return line.substring(idx + marker.length()).trim();
     }
+
+    private String getValue(String line, String key) {
+        int start = line.indexOf(key + "=");
+        if (start < 0) return "";
+        start += key.length() + 1;
+
+        // ищем начало следующего поля вида " something="
+        int end = line.length();
+        for (int i = start; i < line.length() - 1; i++) {
+            if (line.charAt(i) == ' ') {
+                int eq = line.indexOf('=', i + 1);
+                if (eq > 0) {
+                    // проверяем что между пробелом и '=' нет пробелов => похоже на key=
+                    boolean ok = true;
+                    for (int j = i + 1; j < eq; j++) {
+                        if (line.charAt(j) == ' ') { ok = false; break; }
+                    }
+                    if (ok) { end = i; break; }
+                }
+            }
+        }
+        return line.substring(start, end).trim();
+    }
+
 
     private String unescape(String s) {
         return s.replace("\\n", "\n").replace("\\r", "\r");
